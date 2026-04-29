@@ -8,6 +8,7 @@ Gestures:
   - Index + Middle pinch   -> Left click
   - Thumb + Index pinch    -> Right click
   - Two fingers up (V)     -> Scroll mode
+  - Three fingers up       -> Window switch (swipe left/right)
   - Open palm              -> Idle (pause control)
 
 Controls:
@@ -32,6 +33,7 @@ GESTURE_COLORS = {
     Gesture.LEFT_CLICK: (0, 165, 255),
     Gesture.RIGHT_CLICK: (0, 0, 255),
     Gesture.SCROLL: (255, 255, 0),
+    Gesture.SWITCH_WINDOW: (255, 0, 255),
     Gesture.IDLE: (255, 200, 100),
 }
 
@@ -41,6 +43,7 @@ GESTURE_LABELS = {
     Gesture.LEFT_CLICK: "LEFT CLICK",
     Gesture.RIGHT_CLICK: "RIGHT CLICK",
     Gesture.SCROLL: "SCROLL MODE",
+    Gesture.SWITCH_WINDOW: "SWITCH WINDOW",
     Gesture.IDLE: "IDLE (Open Palm)",
 }
 
@@ -82,6 +85,7 @@ def main():
     print("  Index + Middle pinch  -> Left click")
     print("  Thumb + Index pinch   -> Right click")
     print("  Two fingers (V sign)  -> Scroll mode")
+    print("  Three fingers up      -> Switch window (swipe L/R)")
     print("  Open palm             -> Idle")
     print()
     print("Press 'q' to quit | 'l' toggle landmarks | 'm' toggle mirror")
@@ -155,6 +159,7 @@ def main():
                 elif gesture == Gesture.SCROLL:
                     pos = data["position"]
                     scroll_amount = controller.scroll(pos[1], frame_h)
+                    controller.reset_switch()
                     # Draw scroll indicator
                     mid = data["middle_position"]
                     cv2.line(frame, pos, mid, (255, 255, 0), 3)
@@ -163,17 +168,38 @@ def main():
                         cv2.putText(frame, f"Scroll {direction}", (pos[0] + 20, pos[1]),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
 
+                elif gesture == Gesture.SWITCH_WINDOW:
+                    pos = data["position"]
+                    mid = data["middle_position"]
+                    controller.reset_scroll()
+                    result = controller.switch_window(pos[0])
+                    # Draw switch indicator — three dots connected
+                    cv2.line(frame, pos, mid, (255, 0, 255), 3)
+                    cv2.circle(frame, pos, 10, (255, 0, 255), -1)
+                    if result == "next":
+                        cv2.putText(frame, ">> NEXT WINDOW", (pos[0] + 20, pos[1]),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+                    elif result == "prev":
+                        cv2.putText(frame, "<< PREV WINDOW", (pos[0] + 20, pos[1]),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+                    else:
+                        cv2.putText(frame, "Swipe L/R", (pos[0] + 20, pos[1]),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 150, 255), 2)
+
                 elif gesture == Gesture.IDLE:
                     controller.reset_scroll()
+                    controller.reset_switch()
 
                 else:
                     controller.reset_scroll()
+                    controller.reset_switch()
 
                 # Draw landmarks
                 if show_landmarks:
                     detector.draw_landmarks(frame, hand_landmarks, frame_w, frame_h)
             else:
                 controller.reset_scroll()
+                controller.reset_switch()
 
             # Draw UI elements
             draw_active_zone(frame, frame_w, frame_h, CONFIG["frame_margin"])

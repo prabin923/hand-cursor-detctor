@@ -1,14 +1,17 @@
 """
 Cursor control engine — maps hand landmark positions to screen actions.
-Handles smoothing, coordinate mapping, clicking, and scrolling.
+Handles smoothing, coordinate mapping, clicking, scrolling, and window switching.
 """
 
 import pyautogui
 import time
+import platform
 
 # Disable pyautogui fail-safe pause for smoother movement
 pyautogui.PAUSE = 0
 pyautogui.FAILSAFE = True  # Move mouse to corner to abort
+
+IS_MAC = platform.system() == "Darwin"
 
 
 class CursorController:
@@ -18,6 +21,8 @@ class CursorController:
         self.click_cooldown = config.get("click_cooldown", 0.5)
         self.scroll_speed = config.get("scroll_speed", 10)
         self.frame_margin = config.get("frame_margin", 0.1)  # ignore outer 10% of frame
+        self.switch_threshold = config.get("switch_threshold", 80)  # px swipe to trigger
+        self.switch_cooldown = config.get("switch_cooldown", 0.8)  # seconds between switches
 
         # State
         self.prev_x = self.screen_w // 2
@@ -25,6 +30,10 @@ class CursorController:
         self.last_click_time = 0
         self.last_scroll_y = None
         self.is_clicking = False
+
+        # Window switch state
+        self.switch_start_x = None
+        self.last_switch_time = 0
 
     def map_to_screen(self, hand_x, hand_y, frame_w, frame_h):
         """
@@ -110,3 +119,43 @@ class CursorController:
     def reset_scroll(self):
         """Reset scroll tracking when leaving scroll mode."""
         self.last_scroll_y = None
+
+    def switch_window(self, hand_x):
+        """
+        Track horizontal hand swipe to switch windows.
+        Swipe right -> next window (Cmd+Tab / Alt+Tab)
+        Swipe left  -> previous window (Cmd+Shift+Tab / Alt+Shift+Tab)
+        Returns: 'next', 'prev', or None
+        """
+        now = time.time()
+
+        if self.switch_start_x is None:
+            self.switch_start_x = hand_x
+            return None
+
+        delta = hand_x - self.switch_start_x
+
+        if abs(delta) > self.switch_threshold and (now - self.last_switch_time) > self.switch_cooldown:
+            self.last_switch_time = now
+            self.switch_start_x = hand_x  # Reset for continuous swiping
+
+            if IS_MAC:
+                modifier = "command"
+            else:
+                modifier = "alt"
+
+            if delta > 0:
+                # Swiped right -> next window
+                pyautogui.hotkey(modifier, "tab", _pause=False)
+                return "next"
+            else:
+                # Swiped left -> previous window
+                pyautogui.hotkey(modifier, "shift", "tab", _pause=False)
+                return "prev"
+
+        return None
+
+    def reset_switch(self):
+        """Reset window switch tracking when leaving switch mode."""
+        self.switch_start_x = None
+

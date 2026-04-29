@@ -18,6 +18,10 @@ CONFIG = {
     "scroll_speed": 10,       # scroll sensitivity multiplier
     "frame_margin": 0.1,      # ignore outer 10% of frame for comfort
 
+    # Window switching
+    "switch_threshold": 80,   # pixels of horizontal swipe to trigger switch
+    "switch_cooldown": 0.8,   # seconds between window switches
+
     # Camera
     "camera_index": 0,        # webcam device index
     "camera_width": 640,

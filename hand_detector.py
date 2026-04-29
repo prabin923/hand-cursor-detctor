@@ -15,7 +15,8 @@ class Gesture(Enum):
     MOVE = "move"            # Index finger pointing up
     LEFT_CLICK = "left_click"   # Index + middle finger pinch
     RIGHT_CLICK = "right_click" # Thumb + index pinch
-    SCROLL = "scroll"        # Fist / two fingers up
+    SCROLL = "scroll"        # Two fingers up (V)
+    SWITCH_WINDOW = "switch_window"  # Three fingers up (index+middle+ring)
     IDLE = "idle"            # Open palm
 
 
@@ -108,6 +109,13 @@ class HandDetector:
         index_middle_dist = self._distance(positions[self.INDEX_TIP], positions[self.MIDDLE_TIP])
         if index_up and middle_up and index_middle_dist < pinch_threshold and not ring_up:
             return Gesture.LEFT_CLICK, {"position": positions[self.INDEX_TIP]}
+
+        # Three fingers up (index + middle + ring, spread) = Window switch mode
+        if index_up and middle_up and ring_up and not pinky_up and index_middle_dist >= pinch_threshold:
+            return Gesture.SWITCH_WINDOW, {
+                "position": positions[self.INDEX_TIP],
+                "middle_position": positions[self.MIDDLE_TIP],
+            }
 
         # Two fingers up (index + middle, spread) = Scroll mode
         if index_up and middle_up and not ring_up and not pinky_up and index_middle_dist >= pinch_threshold:
