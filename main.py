@@ -17,68 +17,91 @@ Controls:
   - Press 'm' to toggle mirror mode
 """
 
-import cv2
-import time
+import json
 import sys
-
-from hand_detector import HandDetector, Gesture
-from cursor_controller import CursorController
-from config import CONFIG
+from http.server import BaseHTTPRequestHandler
 
 
-# Gesture display colors (BGR)
-GESTURE_COLORS = {
-    Gesture.NONE: (128, 128, 128),
-    Gesture.MOVE: (0, 255, 0),
-    Gesture.LEFT_CLICK: (0, 165, 255),
-    Gesture.RIGHT_CLICK: (0, 0, 255),
-    Gesture.SCROLL: (255, 255, 0),
-    Gesture.SWITCH_WINDOW: (255, 0, 255),
-    Gesture.IDLE: (255, 200, 100),
-}
+# Vercel detects `handler` only as a top-level class named handler (not `handler = ...`).
+class handler(BaseHTTPRequestHandler):
+    """
+    Vercel Python HTTP entry (BaseHTTPRequestHandler subclass).
+    Webcam cursor control runs on your machine; this URL only documents that.
+    """
 
-GESTURE_LABELS = {
-    Gesture.NONE: "No Gesture",
-    Gesture.MOVE: "MOVE CURSOR",
-    Gesture.LEFT_CLICK: "LEFT CLICK",
-    Gesture.RIGHT_CLICK: "RIGHT CLICK",
-    Gesture.SCROLL: "SCROLL MODE",
-    Gesture.SWITCH_WINDOW: "SWITCH WINDOW",
-    Gesture.IDLE: "IDLE (Open Palm)",
-}
+    def log_message(self, format, *args):
+        return
 
-
-def draw_status_bar(frame, gesture, fps, frame_h, frame_w):
-    """Draw a translucent status bar at the bottom of the frame."""
-    bar_h = 50
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, frame_h - bar_h), (frame_w, frame_h), (30, 30, 30), -1)
-    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
-
-    color = GESTURE_COLORS.get(gesture, (255, 255, 255))
-    label = GESTURE_LABELS.get(gesture, "Unknown")
-
-    # Gesture indicator circle
-    cv2.circle(frame, (25, frame_h - 25), 10, color, -1)
-
-    # Gesture text
-    cv2.putText(frame, label, (45, frame_h - 15),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-    # FPS counter
-    if CONFIG["show_fps"]:
-        cv2.putText(frame, f"FPS: {int(fps)}", (frame_w - 120, frame_h - 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
+    def do_GET(self):
+        body = {
+            "name": "Hand Gesture Cursor Control",
+            "message": (
+                "Gesture-driven cursor control uses your local webcam and OS; "
+                "run it on your computer, not via this HTTP endpoint."
+            ),
+            "local_run": "pip install -r requirements.txt && python main.py",
+        }
+        payload = json.dumps(body, indent=2).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
 
-def draw_active_zone(frame, frame_w, frame_h, margin):
-    """Draw the active tracking zone rectangle."""
-    mx = int(frame_w * margin)
-    my = int(frame_h * margin)
-    cv2.rectangle(frame, (mx, my), (frame_w - mx, frame_h - my), (80, 80, 80), 1)
+def run_desktop_app():
+    """OpenCV + MediaPipe desktop loop (imports deferred so Vercel can load main.py)."""
+    import time
 
+    import cv2
 
-def main():
+    from hand_detector import HandDetector, Gesture
+    from cursor_controller import CursorController
+    from config import CONFIG
+
+    GESTURE_COLORS = {
+        Gesture.NONE: (128, 128, 128),
+        Gesture.MOVE: (0, 255, 0),
+        Gesture.LEFT_CLICK: (0, 165, 255),
+        Gesture.RIGHT_CLICK: (0, 0, 255),
+        Gesture.SCROLL: (255, 255, 0),
+        Gesture.SWITCH_WINDOW: (255, 0, 255),
+        Gesture.IDLE: (255, 200, 100),
+    }
+
+    GESTURE_LABELS = {
+        Gesture.NONE: "No Gesture",
+        Gesture.MOVE: "MOVE CURSOR",
+        Gesture.LEFT_CLICK: "LEFT CLICK",
+        Gesture.RIGHT_CLICK: "RIGHT CLICK",
+        Gesture.SCROLL: "SCROLL MODE",
+        Gesture.SWITCH_WINDOW: "SWITCH WINDOW",
+        Gesture.IDLE: "IDLE (Open Palm)",
+    }
+
+    def draw_status_bar(frame, gesture, fps, frame_h, frame_w):
+        bar_h = 50
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, frame_h - bar_h), (frame_w, frame_h), (30, 30, 30), -1)
+        cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+
+        color = GESTURE_COLORS.get(gesture, (255, 255, 255))
+        label = GESTURE_LABELS.get(gesture, "Unknown")
+
+        cv2.circle(frame, (25, frame_h - 25), 10, color, -1)
+
+        cv2.putText(frame, label, (45, frame_h - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+        if CONFIG["show_fps"]:
+            cv2.putText(frame, f"FPS: {int(fps)}", (frame_w - 120, frame_h - 15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
+
+    def draw_active_zone(frame, frame_w, frame_h, margin):
+        mx = int(frame_w * margin)
+        my = int(frame_h * margin)
+        cv2.rectangle(frame, (mx, my), (frame_w - mx, frame_h - my), (80, 80, 80), 1)
+
     print("Starting Hand Cursor Control...")
     print("Gestures:")
     print("  Index finger up       -> Move cursor")
@@ -91,7 +114,6 @@ def main():
     print("Press 'q' to quit | 'l' toggle landmarks | 'm' toggle mirror")
     print()
 
-    # Initialize components
     detector = HandDetector(
         max_hands=CONFIG["max_hands"],
         detection_confidence=CONFIG["detection_confidence"],
@@ -99,7 +121,6 @@ def main():
     )
     controller = CursorController(CONFIG)
 
-    # Open webcam
     cap = cv2.VideoCapture(CONFIG["camera_index"])
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, CONFIG["camera_width"])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CONFIG["camera_height"])
@@ -111,7 +132,6 @@ def main():
     show_landmarks = CONFIG["show_landmarks"]
     mirror = True
     prev_time = time.time()
-    prev_gesture = Gesture.NONE
 
     try:
         while True:
@@ -125,7 +145,6 @@ def main():
 
             frame_h, frame_w, _ = frame.shape
 
-            # Detect hand
             hand_landmarks, handedness = detector.detect(frame)
 
             gesture = Gesture.NONE
@@ -134,12 +153,10 @@ def main():
                 positions = detector.get_landmark_positions(hand_landmarks, frame_w, frame_h)
                 gesture, data = detector.classify_gesture(positions, CONFIG["pinch_threshold"])
 
-                # Execute cursor action based on gesture
                 if gesture == Gesture.MOVE:
                     pos = data["position"]
                     controller.move_cursor(pos[0], pos[1], frame_w, frame_h)
                     controller.reset_scroll()
-                    # Draw tracking point
                     cv2.circle(frame, pos, 12, (0, 255, 0), 2)
 
                 elif gesture == Gesture.LEFT_CLICK:
@@ -160,7 +177,6 @@ def main():
                     pos = data["position"]
                     scroll_amount = controller.scroll(pos[1], frame_h)
                     controller.reset_switch()
-                    # Draw scroll indicator
                     mid = data["middle_position"]
                     cv2.line(frame, pos, mid, (255, 255, 0), 3)
                     direction = "UP" if scroll_amount > 0 else "DOWN" if scroll_amount < 0 else ""
@@ -173,7 +189,6 @@ def main():
                     mid = data["middle_position"]
                     controller.reset_scroll()
                     result = controller.switch_window(pos[0])
-                    # Draw switch indicator — three dots connected
                     cv2.line(frame, pos, mid, (255, 0, 255), 3)
                     cv2.circle(frame, pos, 10, (255, 0, 255), -1)
                     if result == "next":
@@ -194,27 +209,22 @@ def main():
                     controller.reset_scroll()
                     controller.reset_switch()
 
-                # Draw landmarks
                 if show_landmarks:
                     detector.draw_landmarks(frame, hand_landmarks, frame_w, frame_h)
             else:
                 controller.reset_scroll()
                 controller.reset_switch()
 
-            # Draw UI elements
             draw_active_zone(frame, frame_w, frame_h, CONFIG["frame_margin"])
 
-            # Calculate FPS
             curr_time = time.time()
             fps = 1.0 / (curr_time - prev_time) if (curr_time - prev_time) > 0 else 0
             prev_time = curr_time
 
             draw_status_bar(frame, gesture, fps, frame_h, frame_w)
 
-            # Show frame
             cv2.imshow(CONFIG["window_name"], frame)
 
-            # Handle key presses
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
@@ -223,8 +233,6 @@ def main():
             elif key == ord('m'):
                 mirror = not mirror
 
-            prev_gesture = gesture
-
     except KeyboardInterrupt:
         print("\nStopped by user.")
     finally:
@@ -232,6 +240,10 @@ def main():
         detector.close()
         cv2.destroyAllWindows()
         print("Hand Cursor Control stopped.")
+
+
+def main():
+    run_desktop_app()
 
 
 if __name__ == "__main__":
